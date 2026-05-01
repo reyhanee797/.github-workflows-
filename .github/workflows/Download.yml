@@ -1,0 +1,137 @@
+name: Download Large File + Split + Index (Fast Upload)
+
+on:
+  workflow_dispatch:
+    inputs:
+      URL:
+        description: "File URL to download"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Prepare folders
+        run: |
+          mkdir -p downloads
+          mkdir -p site    
+          
+      - name: Update CA certificates
+        run: |
+           sudo apt-get update
+           sudo apt-get install --reinstall ca-certificates -y
+
+      - name: Download file
+        id: download
+        run: |
+          cd downloads
+
+          # Extract filename from URL and sanitize
+          RAW_FILENAME=$(basename "${URL}" | sed 's/\?.*//' | sed 's/#.*//')
+          # Remove ALL invalid characters for artifacts: < > : " | ? *
+          FILE=$(echo "$RAW_FILENAME" | sed 's/[<>:"|?*]/_/g')
+          # Also clean up slashes
+          FILE=$(echo "$FILE" | sed 's/[\\/]/_/g')
+          
+          # If no valid filename, use a default
+          if [ -z "$FILE" ] || [[ "$FILE" == .* ]]; then
+            FILE="downloaded_file"
+          fi
+          
+          echo "Downloading to: $FILE"
+          
+          # Download with error handling
+          curl -L --fail --retry 3 --retry-delay 2 -o "$FILE" "${URL}"
+          
+          # Check if download succeeded
+          if [ ! -f "$FILE" ]; then
+            echo "Error: Download failed - file not created"
+            exit 1
+          fi
+          
+          if [ ! -s "$FILE" ]; then
+            echo "Error: Downloaded file is empty"
+            exit 1
+          fi
+          
+          SIZE=$(stat -c%s "$FILE")
+          HASH=$(sha256sum "$FILE" | cut -d ' ' -f1)
+          
+          echo "filename=$FILE" >> $GITHUB_OUTPUT
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "sha256=$HASH" >> $GITHUB_OUTPUT
+        env:
+          URL: ${{ inputs.URL }}
+
+      - name: Split file (raw fast parts)
+        id: split
+        run: |
+          cd downloads
+
+          FILE="${{ steps.download.outputs.filename }}"
+          SIZE="${{ steps.download.outputs.size }}"
+
+          # Split threshold = 99 MB
+          LIMIT=$((99 * 1024 * 1024))
+
+          if [ "$SIZE" -lt "$LIMIT" ]; then
+            PARTS_JSON=$(printf '["%s"]' "$FILE")
+            PARTS_B64=$(echo "$PARTS_JSON" | base64 -w 0)
+            echo "parts_b64=$PARTS_B64" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # split into 99MB raw chunks
+          split -b 99M "$FILE" "${FILE}.part."
+
+          rm "$FILE"
+
+          PARTS_JSON=$(ls ${FILE}.part.* | jq -R . | jq -s .)
+          PARTS_B64=$(echo "$PARTS_JSON" | base64 -w 0)
+
+          echo "parts_b64=$PARTS_B64" >> $GITHUB_OUTPUT
+
+      - name: Generate JSON index
+        run: |
+          mkdir -p site
+
+          PARTS_JSON=$(echo "${{ steps.split.outputs.parts_b64 }}" | base64 --decode)
+
+          cat <<EOF > site/files.json
+          [
+            {
+              "name": "${{ steps.download.outputs.filename }}",
+              "size": "${{ steps.download.outputs.size }}",
+              "sha256": "${{ steps.download.outputs.sha256 }}",
+              "parts": $PARTS_JSON
+            }
+          ]
+          EOF
+
+      - name: Git config (disable slow compression)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          git config core.compression 0
+          git config pack.window 0
+          git config pack.depth 0
+          git config pack.threads 1
+
+      - name: Upload as artifact (download from here)
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-file
+          path: downloads/
+          retention-days: 7
