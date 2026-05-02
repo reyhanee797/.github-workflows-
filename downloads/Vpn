@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="assets/app.css">
+  <style>
+    .content {
+      font-size: 15px;
+      color: #4d4d4d;
+    }
+
+    .content p {
+      letter-spacing: normal;
+      line-height: 24px;
+      margin-top: 8px;
+    }
+
+    .content img {
+      border: 1px solid #eee;
+      max-width: 100%;
+    }
+
+    .link {
+      color: #0054a6;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app" style="display: none;">
+    <div class="banner">
+      <img class="banner__logo" src="assets/logo.png" />
+      <div id="lang" class="banner__lang">
+        <img class="banner__lang-icon" src="assets/earth.svg" />
+        <span id="lang-value"></span>
+      </div>
+      <div class="banner__title">
+        <img class="banner__title-icon" src="assets/help.png" />
+        <div id="title"></div>
+      </div>
+      <img class="banner__img" src="assets/title.png" />
+    </div>
+    <div id="content" class="content"></div>
+    <div id="footer" class="footer"></div>
+    <div id="pop-lang" style="display: none;">
+      <div id="lang-zh" class="pop__lang">
+      </div>
+      <div id="lang-en" class="pop__lang">
+      </div>
+      <div id="lang-zh-hk" class="pop__lang">
+      </div>
+    </div>
+  </div>
+  <script type="text/javascript" src="assets/js/lib/popper.min.js"></script>
+  <script type="text/javascript" src="assets/js/lib/tippy-bundle.umd.min.js"></script>
+  <script type="text/javascript" src="assets/js/lib/mitt.umd.js"></script>
+  <script type="text/javascript" src="assets/js/lib/qs.js"></script>
+  <script type="text/javascript" src="assets/js/app.js"></script>
+  <script type="text/javascript" src="assets/js/platform.js"></script>
+  <script type="text/javascript" src="assets/js/config.js"></script>
+  <script type="text/javascript" src="assets/js/hybrid.js"></script>
+  <script type="text/javascript" src="assets/js/configCommon.js"></script>
+  <script type="text/javascript">
+    updateLanguage(app.LocaleUtil.getLanguage())
+    app.LocaleUtil.on('languageChanged', updateLanguage)
+    function updateLanguage(lang) {
+      app.ConfigUtil
+        .getConfig('assets/config/configDsCommon')
+        .then(function (config) {
+          document.title = config.title
+          document.getElementById('title').textContent = config.title
+          document.getElementById('content').innerHTML = config.content
+        })
+    }
+  </script>
+</body>
+
+</html>
