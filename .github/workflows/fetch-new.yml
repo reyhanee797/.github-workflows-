@@ -1,0 +1,51 @@
+name: Fetch and Store File
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to download'
+        required: true
+        type: string
+      filename:
+        description: 'Output filename'
+        required: false
+        type: string
+        default: 'downloaded_file'
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sanitize filename (remove invalid characters)
+        run: |
+          # Remove ? and other invalid chars from filename
+          SAFE_FILENAME=$(echo "${{ github.event.inputs.filename }}" | sed 's/[<>:"|?*]/_/g')
+          echo "SAFE_FILENAME=$SAFE_FILENAME" >> $GITHUB_ENV
+
+      - name: Download file
+        run: |
+          wget --timeout=300 --tries=5 \
+            --no-check-certificate \
+            -O "${{ env.SAFE_FILENAME }}" \
+            "${{ github.event.inputs.url }}"
+      
+      - name: Verify download
+        run: |
+          if [ ! -f "${{ env.SAFE_FILENAME }}" ]; then
+            echo "Error: File not downloaded"
+            exit 1
+          fi
+          if [ ! -s "${{ env.SAFE_FILENAME }}" ]; then
+            echo "Error: Downloaded file is empty"
+            exit 1
+          fi
+          echo "File size: $(stat -c%s "${{ env.SAFE_FILENAME }}") bytes"
+          echo "Download successful!"
+      
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SAFE_FILENAME }}
+          path: ${{ env.SAFE_FILENAME }}
+          retention-days: 7
